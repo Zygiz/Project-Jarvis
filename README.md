@@ -82,14 +82,14 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ### Setup
 - [x] Project spec written
 - [x] Hardware audit (RTX 4080 Laptop, 12 GB VRAM)
-- [ ] GitHub repo created (private for now)
-- [ ] README + `.env.example` committed
+- [x] GitHub repo created (private for now)
+- [x] README committed
 
 ### Week 1 — Linux + Docker foundation
-- [ ] Create Ubuntu Server VM in VirtualBox
-- [ ] Linux basics: filesystem, permissions, sudo
-- [ ] Enable SSH, log in from Windows
-- [ ] Install Git, SSH keys to GitHub, first push
+- [x] Create Ubuntu Server VM in VirtualBox
+- [x] Linux basics: filesystem, permissions, sudo
+- [x] Enable SSH, log in from Windows
+- [x] Install Git, SSH keys to GitHub, first push
 - [ ] Install Docker + Compose, run `hello-world`
 - [ ] Docker deeper: volumes, networks, port mapping
 - [ ] First Dockerfile for a trivial Python script
