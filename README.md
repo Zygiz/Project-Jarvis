@@ -91,8 +91,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Enable SSH, log in from Windows
 - [x] Install Git, SSH keys to GitHub, first push
 - [x] Install Docker + Compose, run `hello-world`
-- [ ] Docker deeper: volumes, networks, port mapping
-- [ ] First Dockerfile for a trivial Python script
+- [x] Docker deeper: volumes, networks, port mapping
+- [x] First Dockerfile for a trivial Python script
 - [x] Snapshot the VM
 
 ### Week 2 — Backend + database
