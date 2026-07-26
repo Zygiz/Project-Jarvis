@@ -90,10 +90,10 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Linux basics: filesystem, permissions, sudo
 - [x] Enable SSH, log in from Windows
 - [x] Install Git, SSH keys to GitHub, first push
-- [ ] Install Docker + Compose, run `hello-world`
+- [x] Install Docker + Compose, run `hello-world`
 - [ ] Docker deeper: volumes, networks, port mapping
 - [ ] First Dockerfile for a trivial Python script
-- [ ] Snapshot the VM
+- [x] Snapshot the VM
 
 ### Week 2 — Backend + database
 - [ ] Project skeleton, `.gitignore`, `.env` / `.env.example`
