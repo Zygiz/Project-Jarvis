@@ -8,5 +8,6 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env")
 
-
+# Creating this object triggers BaseSettings to read model_config(This is what BaseSettings do - looks for model_config),
+# open .env, and fill in the fields (falling back to defaults if missing).
 settings = Settings()
