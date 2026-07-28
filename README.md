@@ -96,8 +96,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Snapshot the VM
 
 ### Week 2 — Backend + database
-- [ ] Project skeleton, `.gitignore`, `.env` / `.env.example`
-- [ ] FastAPI app + `/health` endpoint
+- [x] Project skeleton, `.gitignore`, `.env` / `.env.example`
+- [x] FastAPI app + `/health` endpoint
 - [ ] Move into docker-compose
 - [ ] Add Postgres service, connect from API
 - [ ] SQLAlchemy models + first Alembic migration
