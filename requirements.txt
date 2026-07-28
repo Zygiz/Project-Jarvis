@@ -1,0 +1,5 @@
+#lists the Python libraries the project needs
+#fastapi is the web framework, uvicorn is the server that actually runs it, pydantic-settings reads your .env into typed config
+fastapi
+uvicorn[standard]
+pydantic-settings
