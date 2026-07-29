@@ -98,7 +98,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ### Week 2 — Backend + database
 - [x] Project skeleton, `.gitignore`, `.env` / `.env.example`
 - [x] FastAPI app + `/health` endpoint
-- [ ] Move into docker-compose
+- [x] Move into docker-compose
 - [ ] Add Postgres service, connect from API
 - [ ] SQLAlchemy models + first Alembic migration
 - [ ] Structured logging
