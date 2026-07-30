@@ -1,4 +1,4 @@
-# 🤖 Jarvis — Personal AI Assistant
+\# 🤖 Jarvis — Personal AI Assistant
 
 > A modular, private, self-hosted personal AI assistant — built from scratch, one phase at a time.
 
@@ -99,7 +99,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Project skeleton, `.gitignore`, `.env` / `.env.example`
 - [x] FastAPI app + `/health` endpoint
 - [x] Move into docker-compose
-- [ ] Add Postgres service, connect from API
+- [x] Deploy to Hostinger VPS from GitHub (proved portability)
+- [x] Add Postgres service, connect from API
 - [ ] SQLAlchemy models + first Alembic migration
 - [ ] Structured logging
 - [ ] First pytest tests
