@@ -101,7 +101,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Move into docker-compose
 - [x] Deploy to Hostinger VPS from GitHub (proved portability)
 - [x] Add Postgres service, connect from API
-- [ ] SQLAlchemy models + first Alembic migration
+- [x] SQLAlchemy models + first Alembic migration
 - [ ] Structured logging
 - [ ] First pytest tests
 
