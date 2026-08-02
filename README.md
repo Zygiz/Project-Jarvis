@@ -103,7 +103,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Add Postgres service, connect from API
 - [x] SQLAlchemy models + first Alembic migration
 - [x] Structured logging
-- [ ] First pytest tests
+- [x] First pytest tests
 
 ### Week 3 — Telegram interface
 - [ ] BotFather token into `.env`

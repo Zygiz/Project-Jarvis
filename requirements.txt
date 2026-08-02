@@ -6,3 +6,5 @@ pydantic-settings
 sqlalchemy
 alembic
 psycopg2-binary
+pytest
+httpx
