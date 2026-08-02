@@ -102,7 +102,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Deploy to Hostinger VPS from GitHub (proved portability)
 - [x] Add Postgres service, connect from API
 - [x] SQLAlchemy models + first Alembic migration
-- [ ] Structured logging
+- [x] Structured logging
 - [ ] First pytest tests
 
 ### Week 3 — Telegram interface
