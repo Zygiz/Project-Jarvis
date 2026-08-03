@@ -106,7 +106,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] First pytest tests
 
 ### Week 3 — Telegram interface
-- [ ] BotFather token into `.env`
+- [x] BotFather token into `.env`
 - [ ] Minimal echo bot in compose
 - [ ] Allowlist my own Telegram user ID (auth)
 - [ ] Command handling (`/start`, `/help`)
