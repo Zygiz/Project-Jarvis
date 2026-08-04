@@ -7,7 +7,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - jarvis_db_data:/var/lib/postgresql/data
-    
 
   api:
     build: .
@@ -19,6 +18,15 @@ services:
     depends_on:
       - db
 
+  bot:
+    build: .
+    env_file: .env
+    volumes:
+      - .:/app
+    command: python -m app.bot
+    depends_on:
+      - db
+    restart: unless-stopped
+
 volumes:
   jarvis_db_data:
-

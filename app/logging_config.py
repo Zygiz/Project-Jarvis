@@ -16,3 +16,7 @@ def setup_logging(level: str = "INFO") -> None:
         stream=sys.stdout,
         force=True,  # override any config a library set up first
     )
+
+     # httpx logs full request URLs, which contain the bot token. Silence it.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("telegram.ext.Application").setLevel(logging.WARNING)

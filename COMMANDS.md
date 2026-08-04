@@ -6,7 +6,9 @@ values (repo, db user, ports) so they're copy-paste ready.
 Key values used below:
 - Repo folder: `Project-Jarvis`
 - DB user / DB name: `jarvis` / `jarvis`
-- Ports: API `8000`, Postgres `5432` (internal only), SSH-to-VM `2222`
+- Ports: API `8000` (loopback only), Postgres `5432` (internal only), SSH-to-VM `2222`
+- Services: `api`, `bot`, `db`
+- My Telegram user ID: `8524921379`
 
 ---
 
@@ -34,7 +36,7 @@ cd Project-Jarvis
 
 # 4. .env does NOT come from git — recreate it
 cp .env.example .env
-nano .env                          # fill in real values
+nano .env                          # fill in real values (DB password, bot token)
 
 # 5. Start + build the database tables
 docker compose up -d
@@ -44,6 +46,62 @@ docker compose exec api alembic upgrade head
 docker compose exec api pytest
 curl localhost:8000/health
 ```
+
+---
+
+## Secret hygiene — read this before pasting anything anywhere
+
+**Never paste raw logs into chat, GitHub issues, or forums without scanning them
+for secrets first.**
+
+Learned the hard way: the `httpx` library logs full request URLs, and Telegram puts
+the bot token **inside the URL**. So the app's own logs contained the token in
+plaintext, and I pasted it into a chat. Had to revoke and reissue.
+
+Fix already applied in `app/logging_config.py`:
+
+```python
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram.ext.Application").setLevel(logging.WARNING)
+```
+
+Things that leak: bot tokens, API keys, DB passwords, `.env` contents, full URLs
+with credentials in them.
+
+---
+
+## Telegram bot
+
+Bot management happens in Telegram, talking to **@BotFather**:
+
+```
+/newbot      create a new bot (asks for display name, then a username ending in "bot")
+/mybots      list my bots, edit settings
+/token       show the current token
+/revoke      KILL the current token and issue a new one — do this if it ever leaks
+/setcommands set the command list shown in the Telegram UI
+```
+
+After revoking: update `TELEGRAM_BOT_TOKEN` in `.env`, then `docker compose restart bot`.
+
+Running the bot:
+
+```bash
+docker compose logs -f bot         # watch it live (Ctrl+C to stop following)
+docker compose restart bot         # restart after code changes
+docker compose up -d --build       # rebuild after requirements.txt changes
+```
+
+**Long-polling, not webhooks.** The bot asks Telegram for new messages in a loop —
+all connections go OUTWARD. That means:
+- no open ports needed
+- no public HTTPS needed
+- works identically on the home VM (behind NAT) and the VPS
+
+That's why the `bot` service in docker-compose.yml has no `ports:` at all.
+
+Find my own Telegram user ID: send the bot a message and read the log line
+`Message received | user_id=...`
 
 ---
 
@@ -84,19 +142,22 @@ git log --format="%an <%ae>" -5    # who authored the last 5 commits
 
 Rule when switching between VM and VPS: **push before you stop, pull before you start.**
 
-Before every commit: check `git status` does NOT list `.env` — it holds real
-passwords and API keys.
+Before every commit: check `git status` does NOT list `.env` — it holds the DB
+password and the Telegram bot token.
 
 ---
 
 ## Docker Compose — running Jarvis
+
+Three services: `api` (FastAPI), `bot` (Telegram), `db` (Postgres).
+`api` and `bot` share the same image — only the startup command differs.
 
 Run these from inside `~/Project-Jarvis` (where docker-compose.yml lives).
 
 ```bash
 docker compose up -d           # start all containers in background
 docker compose up -d --build   # force rebuild, then start (after requirements.txt changes)
-docker compose restart api     # restart just the api service
+docker compose restart api     # restart just one service (api / bot / db)
 docker compose down            # stop AND remove containers (data survives — volume kept)
 docker compose stop            # stop containers but keep them (faster restart)
 docker compose start           # start previously-stopped containers
@@ -104,8 +165,12 @@ docker compose ps              # status of this project's containers
 ```
 
 **Gotcha:** `docker compose up -d` may say "Running" and NOT pick up code changes.
-If edits don't seem to apply, use `docker compose restart api` or
+If edits don't seem to apply, use `docker compose restart <service>` or
 `docker compose down && docker compose up -d`.
+
+**Crash loop:** with `restart: unless-stopped`, a broken service restarts every few
+seconds and floods the logs with the same traceback. Ctrl+C out of the log follow,
+read ONE traceback, fix, then restart.
 
 **DANGER — wipes the database:**
 
@@ -188,9 +253,8 @@ The chain: `models.py` (blueprint) → `revision --autogenerate` (writes the pla
 ## Logs & debugging (first move when something breaks)
 
 ```bash
-docker compose logs api        # all output from the api container
-docker compose logs db         # all output from the postgres container
-docker compose logs -f api     # follow logs live (Ctrl+C to stop watching)
+docker compose logs api        # all output from a service (api / bot / db)
+docker compose logs -f bot     # follow live (Ctrl+C to stop watching)
 docker compose logs --tail 50 api   # just the last 50 lines
 
 docker ps                      # every running container (not just this project)
@@ -205,6 +269,11 @@ Debug order when something's wrong:
 
 Read tracebacks **bottom-up** — the real error is the last line, everything above
 is just the call chain.
+
+Error types worth telling apart:
+- `AttributeError: 'Settings' object has no attribute 'x'` → the field isn't declared
+  in `config.py` at all
+- `ValidationError: field required` → the field IS declared but missing from `.env`
 
 App logs go to stdout on purpose, which is what `docker compose logs` shows.
 Never log to a file inside a container — it vanishes when the container is recreated.
@@ -270,6 +339,7 @@ docker compose ps
 # 0.0.0.0:8000->8000/tcp   = published to the internet
 # 127.0.0.1:8000->8000/tcp = local only
 # 5432/tcp (no prefix)     = internal Docker network only — not published at all
+# (blank)                  = nothing published (the bot — long-polling needs none)
 ```
 
 **Rule:** publish a port only if something OUTSIDE the machine needs to reach it,
@@ -283,6 +353,10 @@ writes its own rules ahead of it. Not binding the port is the reliable fix.
 The same docker-compose.yml is safe on the home VM (behind NAT) and risky on the
 VPS (public IP). Same config, different exposure — the machine's network position
 is what changed.
+
+Public IPs get scanned constantly. Random 404s in the api logs from unknown IPs are
+strangers probing for exploits — normal background noise, but a reminder not to
+expose anything unnecessary.
 
 ---
 
