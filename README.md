@@ -108,7 +108,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ### Week 3 — Telegram interface
 - [x] BotFather token into `.env`
 - [x] Minimal echo bot in compose
-- [ ] Allowlist my own Telegram user ID (auth)
+- [x] Allowlist my own Telegram user ID (auth)
 - [ ] Command handling (`/start`, `/help`)
 - [ ] Persist incoming messages to Postgres
 - [ ] Clean bot → service → response boundaries

@@ -1,4 +1,4 @@
-#loads settings from .env
+# loads settings from .env
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,9 +7,20 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str
     telegram_bot_token: str
+    telegram_allowed_user_ids: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-# Creating this object triggers BaseSettings to read model_config(This is what BaseSettings do - looks for model_config),
+    @property
+    def allowed_user_ids(self) -> set[int]:
+        """Parse the comma-separated .env string into a set of ints."""
+        return {
+            int(part.strip())
+            for part in self.telegram_allowed_user_ids.split(",")
+            if part.strip()
+        }
+
+
+# Creating this object triggers BaseSettings to read model_config,
 # open .env, and fill in the fields (falling back to defaults if missing).
 settings = Settings()
