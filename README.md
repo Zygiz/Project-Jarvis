@@ -109,7 +109,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] BotFather token into `.env`
 - [x] Minimal echo bot in compose
 - [x] Allowlist my own Telegram user ID (auth)
-- [ ] Command handling (`/start`, `/help`)
+- [x] Command handling (`/start`, `/help`)
 - [ ] Persist incoming messages to Postgres
 - [ ] Clean bot → service → response boundaries
 
