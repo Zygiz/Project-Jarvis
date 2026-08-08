@@ -1,3 +1,5 @@
+from app.database import get_session
+from app.models import Message
 import logging
 
 from telegram import Update
@@ -48,14 +50,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+
     if not is_authorized(update):
-        logger.warning(
-            "Unauthorized access attempt | user_id=%s", update.effective_user.id
-        )
+        logger.warning("Unauthorized access attempt | user_id=%s", user_id)
         return
 
-    logger.info("Message received | user_id=%s", update.effective_user.id)
-    await update.message.reply_text(f"You said: {update.message.text}")
+    text = update.message.text
+    logger.info("Message received | user_id=%s", user_id)
+
+    with get_session() as session:
+        session.add(Message(text=text, sender=str(user_id)))
+
+    await update.message.reply_text(f"You said: {text}")
 
 
 def main() -> None:

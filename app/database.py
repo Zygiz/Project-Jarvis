@@ -11,3 +11,19 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # BASE: the parent class every model (table definition) will inherit from.
 Base = declarative_base()
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def get_session():
+    """Open a session, commit on success, roll back on error, always close."""
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()

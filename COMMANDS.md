@@ -36,7 +36,7 @@ cd Project-Jarvis
 
 # 4. .env does NOT come from git — recreate it
 cp .env.example .env
-nano .env                          # fill in real values (DB password, bot token)
+nano .env                          # fill in real values (DB password, bot token, allowlist)
 
 # 5. Start + build the database tables
 docker compose up -d
@@ -66,7 +66,7 @@ logging.getLogger("telegram.ext.Application").setLevel(logging.WARNING)
 ```
 
 Things that leak: bot tokens, API keys, DB passwords, `.env` contents, full URLs
-with credentials in them.
+with credentials in them. Logs also contain my own Telegram user ID.
 
 ---
 
@@ -83,6 +83,16 @@ Bot management happens in Telegram, talking to **@BotFather**:
 ```
 
 After revoking: update `TELEGRAM_BOT_TOKEN` in `.env`, then `docker compose restart bot`.
+
+Command list format for `/setcommands` (no leading slash, ` - ` separator):
+
+```
+start - Check Jarvis is alive
+help - Show available commands
+```
+
+The `/` menu is a Telegram CLIENT feature — commands work regardless, but the popup
+only appears after `/setcommands`, and the client caches it (may need an app restart).
 
 Running the bot:
 
@@ -102,6 +112,39 @@ That's why the `bot` service in docker-compose.yml has no `ports:` at all.
 
 Find my own Telegram user ID: send the bot a message and read the log line
 `Message received | user_id=...`
+
+**`telegram.error.NetworkError: Bad Gateway`** in the logs = Telegram's servers
+hiccuping, not my code. The library retries automatically and recovers. Ignore it.
+
+---
+
+## Auth / allowlist
+
+Only user IDs in `TELEGRAM_ALLOWED_USER_IDS` (comma-separated in `.env`) can use
+the bot. Unauthorized users get **complete silence** — no "access denied" reply,
+because that would confirm the bot exists and is worth attacking.
+
+Denied attempts log at WARNING level:
+
+```bash
+docker compose logs bot | grep -i unauthorized
+```
+
+Startup log confirms the allowlist parsed:
+`Jarvis bot starting up | allowed_users=1`
+
+**Testing the block without a second Telegram account:**
+
+```bash
+# 1. temporarily set a wrong ID in .env
+TELEGRAM_ALLOWED_USER_IDS=1
+docker compose restart bot
+# 2. message the bot — should get SILENCE + a WARNING in the logs
+# 3. set it back to the real ID and restart
+```
+
+Worth doing. An auth check I've never seen actually deny something is one I'm only
+assuming works.
 
 ---
 
@@ -143,7 +186,11 @@ git log --format="%an <%ae>" -5    # who authored the last 5 commits
 Rule when switching between VM and VPS: **push before you stop, pull before you start.**
 
 Before every commit: check `git status` does NOT list `.env` — it holds the DB
-password and the Telegram bot token.
+password, the Telegram bot token, and my user ID.
+
+Commit message style: start with a verb, present tense, describe WHAT changed.
+Good: `Add Telegram user ID allowlist for bot authorization`
+Bad: `update`, `fix bug`, `changes`
 
 ---
 
@@ -268,12 +315,18 @@ Debug order when something's wrong:
 3. `git status` — what did I change?
 
 Read tracebacks **bottom-up** — the real error is the last line, everything above
-is just the call chain.
+is just the call chain. Also check the LINE NUMBER: an error on line 1 usually
+means the file's imports are missing.
 
 Error types worth telling apart:
 - `AttributeError: 'Settings' object has no attribute 'x'` → the field isn't declared
   in `config.py` at all
 - `ValidationError: field required` → the field IS declared but missing from `.env`
+- `NameError: name 'BaseSettings' is not defined` → I pasted a partial code block
+  over the whole file and wiped the imports
+
+**Gotcha:** when pasting code from a chat, check whether it's the WHOLE file or just
+a section. Pasting a class definition over a full file deletes the imports above it.
 
 App logs go to stdout on purpose, which is what `docker compose logs` shows.
 Never log to a file inside a container — it vanishes when the container is recreated.
@@ -301,9 +354,15 @@ Once inside psql (prompt looks like `jarvis=#`):
 \l                  -- list all databases
 \du                 -- list users/roles
 \q                  -- quit back to the normal terminal
+```
 
-SELECT * FROM messages LIMIT 10;      -- peek at rows
-SELECT COUNT(*) FROM messages;        -- how many rows
+Useful queries on the messages table:
+
+```sql
+SELECT * FROM messages ORDER BY created_at DESC LIMIT 10;   -- most recent first
+SELECT COUNT(*) FROM messages;                              -- how many stored
+SELECT * FROM messages WHERE sender = '8524921379';         -- just my messages
+DELETE FROM messages;                                       -- clear them all (careful)
 ```
 
 Note: `\dt`, `\d` etc. only work INSIDE psql — they are not shell commands.
@@ -311,12 +370,17 @@ Note: `\dt`, `\d` etc. only work INSIDE psql — they are not shell commands.
 One-liner without entering psql interactively:
 
 ```bash
-docker compose exec db psql -U jarvis -d jarvis -c "\dt"
+docker compose exec db psql -U jarvis -d jarvis -c "SELECT * FROM messages;"
 docker compose exec db psql -U jarvis -d jarvis -c "SELECT COUNT(*) FROM messages;"
 ```
 
 `alembic_version` is Alembic's own table — it records which migration has been
 applied. Leave it alone.
+
+**How rows get written:** the bot opens a session via `get_session()` in
+`app/database.py`, calls `session.add(Message(...))`, and the context manager
+commits on exit. No SQL is written by hand — SQLAlchemy generates the INSERT.
+`id` and `created_at` fill themselves in (auto-increment + model default).
 
 ---
 
@@ -362,8 +426,8 @@ expose anything unnecessary.
 
 ## Database size & disk usage
 
-```bash
-# Size of the jarvis database (run inside psql)
+```sql
+-- run inside psql
 SELECT pg_size_pretty(pg_database_size('jarvis'));
 ```
 

@@ -110,7 +110,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Minimal echo bot in compose
 - [x] Allowlist my own Telegram user ID (auth)
 - [x] Command handling (`/start`, `/help`)
-- [ ] Persist incoming messages to Postgres
+- [x] Persist incoming messages to Postgres
 - [ ] Clean bot → service → response boundaries
 
 ### Week 4 — LLM + first real tool
