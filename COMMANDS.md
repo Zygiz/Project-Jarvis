@@ -9,6 +9,25 @@ Key values used below:
 - Ports: API `8000` (loopback only), Postgres `5432` (internal only), SSH-to-VM `2222`
 - Services: `api`, `bot`, `db`
 - My Telegram user ID: `8524921379`
+- LLM: Gemini free tier, model `gemini-3.5-flash`
+
+---
+
+## How a message flows (the whole system in one place)
+
+```
+Telegram
+  → bot.py                     receives the update
+  → @require_auth (auth.py)    allowlist check, silence if not allowed
+  → handle_message (services.py)
+        ├─ save_message()      → get_session() → INSERT into messages
+        └─ get_llm().complete(prompt, system=SYSTEM_PROMPT)
+  → reply text returned to bot.py
+  → bot.py sends it back to Telegram
+```
+
+`services.py` knows nothing about Telegram — it takes strings and returns a string.
+That's the boundary that lets a web UI or voice interface reuse the same logic later.
 
 ---
 
@@ -36,7 +55,7 @@ cd Project-Jarvis
 
 # 4. .env does NOT come from git — recreate it
 cp .env.example .env
-nano .env                          # fill in real values (DB password, bot token, allowlist)
+nano .env                          # fill in: DB password, bot token, allowlist, API key
 
 # 5. Start + build the database tables
 docker compose up -d
@@ -45,6 +64,7 @@ docker compose exec api alembic upgrade head
 # 6. Confirm it works
 docker compose exec api pytest
 curl localhost:8000/health
+docker compose exec api python -c "from app.llm import get_llm; print(get_llm().complete('hi'))"
 ```
 
 ---
@@ -70,6 +90,54 @@ with credentials in them. Logs also contain my own Telegram user ID.
 
 ---
 
+## LLM provider
+
+Config lives in `.env`: `LLM_PROVIDER`, `LLM_MODEL`, `GEMINI_API_KEY`.
+Code lives in `app/llm/`:
+- `base.py` — the abstract contract (`LLMProvider.complete()`)
+- `gemini.py` — the Gemini implementation (only file that imports `google.genai`)
+- `__init__.py` — `get_llm()` factory, maps the config string to a class
+
+The system prompt lives in `SYSTEM_PROMPT` at the top of `app/services.py`.
+Editing it changes Jarvis's personality and behaviour everywhere.
+
+Adding another provider (Anthropic, Ollama) = one new file + three lines in the
+factory. Nothing else in Jarvis changes.
+
+```bash
+# Test the LLM directly, bypassing Telegram
+docker compose exec api python -c "from app.llm import get_llm; print(get_llm().complete('hi'))"
+
+# List models my key can see
+docker compose exec api python -c "from google import genai; from app.config import settings; c = genai.Client(api_key=settings.gemini_api_key); [print(m.name) for m in c.models.list()]"
+```
+
+**Gotcha:** assign the client to a variable (`c = genai.Client(...)`) before
+iterating `models.list()`. Inline, Python garbage-collects it mid-pagination and
+throws `RuntimeError: Cannot send a request, as the client has been closed`.
+
+**Gotcha:** `models.list()` shows models the key can SEE, not models it can CALL.
+`gemini-2.5-flash` appeared in the list but returned 404 "no longer available to
+new users". Trust the actual call, not the list.
+
+**Gotcha:** after changing `.env`, use `docker compose up -d` — plain
+`docker compose restart` can keep the old environment values.
+
+Avoid `-latest` aliases (e.g. `gemini-flash-latest`) — the model changes under you
+without warning. Pin a specific version.
+
+Use Flash-tier models. Pro-tier free quotas are too small to build on.
+
+LLM calls are wrapped in try/except in `handle_message()`. If the API fails
+(rate limit, network, bad model) the user gets a friendly message instead of
+silence, and the full traceback goes to the logs via `logger.exception`.
+
+Free-tier privacy note: Google may use free-tier prompts/responses to improve their
+models. Fine for testing; revisit before Jarvis touches email or personal memory.
+Options then: paid tier, Vertex AI, or local models via Ollama (Phase 13).
+
+---
+
 ## Telegram bot
 
 Bot management happens in Telegram, talking to **@BotFather**:
@@ -82,7 +150,7 @@ Bot management happens in Telegram, talking to **@BotFather**:
 /setcommands set the command list shown in the Telegram UI
 ```
 
-After revoking: update `TELEGRAM_BOT_TOKEN` in `.env`, then `docker compose restart bot`.
+After revoking: update `TELEGRAM_BOT_TOKEN` in `.env`, then `docker compose up -d`.
 
 Command list format for `/setcommands` (no leading slash, ` - ` separator):
 
@@ -124,7 +192,8 @@ Only user IDs in `TELEGRAM_ALLOWED_USER_IDS` (comma-separated in `.env`) can use
 the bot. Unauthorized users get **complete silence** — no "access denied" reply,
 because that would confirm the bot exists and is worth attacking.
 
-Denied attempts log at WARNING level:
+Enforced by the `@require_auth` decorator in `app/auth.py`, applied to every
+handler. Written once so it can't be forgotten on a new handler.
 
 ```bash
 docker compose logs bot | grep -i unauthorized
@@ -138,9 +207,9 @@ Startup log confirms the allowlist parsed:
 ```bash
 # 1. temporarily set a wrong ID in .env
 TELEGRAM_ALLOWED_USER_IDS=1
-docker compose restart bot
+docker compose up -d
 # 2. message the bot — should get SILENCE + a WARNING in the logs
-# 3. set it back to the real ID and restart
+# 3. set it back to the real ID and bring it up again
 ```
 
 Worth doing. An auth check I've never seen actually deny something is one I'm only
@@ -186,7 +255,7 @@ git log --format="%an <%ae>" -5    # who authored the last 5 commits
 Rule when switching between VM and VPS: **push before you stop, pull before you start.**
 
 Before every commit: check `git status` does NOT list `.env` — it holds the DB
-password, the Telegram bot token, and my user ID.
+password, the Telegram bot token, the Gemini API key, and my user ID.
 
 Commit message style: start with a verb, present tense, describe WHAT changed.
 Good: `Add Telegram user ID allowlist for bot authorization`
@@ -211,9 +280,16 @@ docker compose start           # start previously-stopped containers
 docker compose ps              # status of this project's containers
 ```
 
-**Gotcha:** `docker compose up -d` may say "Running" and NOT pick up code changes.
-If edits don't seem to apply, use `docker compose restart <service>` or
-`docker compose down && docker compose up -d`.
+**Gotcha — code changes not applying:** `docker compose restart` sometimes doesn't
+pick up edited files. If the bot still behaves the old way after an edit, do
+`docker compose down && docker compose up -d`. First verify the file actually saved:
+
+```bash
+grep -n "SYSTEM_PROMPT" app/services.py
+```
+
+**Gotcha:** for `.env` changes, `restart` is not enough — use `up -d` so the
+container is recreated with the new environment.
 
 **Crash loop:** with `restart: unless-stopped`, a broken service restarts every few
 seconds and floods the logs with the same traceback. Ctrl+C out of the log follow,
@@ -312,7 +388,7 @@ Debug order when something's wrong:
 
 1. `docker compose ps` — is it even running?
 2. `docker compose logs <service>` — what did it say before dying?
-3. `git status` — what did I change?
+3. `git status` / `grep` the file — did my change actually save?
 
 Read tracebacks **bottom-up** — the real error is the last line, everything above
 is just the call chain. Also check the LINE NUMBER: an error on line 1 usually
@@ -324,9 +400,14 @@ Error types worth telling apart:
 - `ValidationError: field required` → the field IS declared but missing from `.env`
 - `NameError: name 'BaseSettings' is not defined` → I pasted a partial code block
   over the whole file and wiped the imports
+- `404 NOT_FOUND` from an LLM call → wrong/retired model name in `LLM_MODEL`
+- Old behaviour after an edit → container didn't reload; `down && up -d`
 
 **Gotcha:** when pasting code from a chat, check whether it's the WHOLE file or just
 a section. Pasting a class definition over a full file deletes the imports above it.
+
+**Gotcha:** keep `python -c "..."` on ONE line. A multi-line paste makes bash try to
+run the second line as a shell command (`syntax error near unexpected token`).
 
 App logs go to stdout on purpose, which is what `docker compose logs` shows.
 Never log to a file inside a container — it vanishes when the container is recreated.
@@ -377,10 +458,8 @@ docker compose exec db psql -U jarvis -d jarvis -c "SELECT COUNT(*) FROM message
 `alembic_version` is Alembic's own table — it records which migration has been
 applied. Leave it alone.
 
-**How rows get written:** bot.py receives the message → calls handle_message() in
-app/services.py → which calls save_message() → which opens a session via
-get_session() in app/database.py and commits. No SQL written by hand.
-Auth happens first via the @require_auth decorator in app/auth.py.
+No SQL is written by hand — `session.add(Message(...))` and SQLAlchemy generates
+the INSERT. `id` and `created_at` fill themselves in (auto-increment + model default).
 
 ---
 

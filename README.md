@@ -115,7 +115,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 ### Week 4 — LLM + first real tool
 - [x] LLM provider abstraction (Gemini impl)
-- [ ] First round-trip: message → LLM → reply
+- [x] First round-trip: message → LLM → reply
 - [ ] Prompt + bounded history window
 - [ ] Structured JSON intent, validated with pydantic
 - [ ] `create_reminder` tool: validate → store

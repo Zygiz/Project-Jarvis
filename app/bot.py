@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info("/start | user_id=%s", update.effective_user.id)
     await update.message.reply_text(
-        "Jarvis online.\n\nSend me a message and I'll echo it back for now. "
-        "Use /help to see what I can do."
+        "Jarvis online.\n\nAsk me anything, or use /help to see commands."
     )
 
 
@@ -34,7 +33,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "Commands:\n"
         "/start - check I'm alive\n"
         "/help - this message\n\n"
-        "Anything else gets echoed back (LLM coming soon)."
+        "Send me anything else and I'll answer it."
     )
 
 
