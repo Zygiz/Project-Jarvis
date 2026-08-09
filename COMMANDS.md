@@ -377,10 +377,10 @@ docker compose exec db psql -U jarvis -d jarvis -c "SELECT COUNT(*) FROM message
 `alembic_version` is Alembic's own table — it records which migration has been
 applied. Leave it alone.
 
-**How rows get written:** the bot opens a session via `get_session()` in
-`app/database.py`, calls `session.add(Message(...))`, and the context manager
-commits on exit. No SQL is written by hand — SQLAlchemy generates the INSERT.
-`id` and `created_at` fill themselves in (auto-increment + model default).
+**How rows get written:** bot.py receives the message → calls handle_message() in
+app/services.py → which calls save_message() → which opens a session via
+get_session() in app/database.py and commits. No SQL written by hand.
+Auth happens first via the @require_auth decorator in app/auth.py.
 
 ---
 

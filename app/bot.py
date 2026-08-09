@@ -1,5 +1,3 @@
-from app.database import get_session
-from app.models import Message
 import logging
 
 from telegram import Update
@@ -11,23 +9,17 @@ from telegram.ext import (
     filters,
 )
 
+from app.auth import require_auth
 from app.config import settings
 from app.logging_config import setup_logging
+from app.services import handle_message
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def is_authorized(update: Update) -> bool:
-    """Only allowlisted Telegram user IDs may use Jarvis."""
-    return update.effective_user.id in settings.allowed_user_ids
-
-
+@require_auth
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        logger.warning("Unauthorized /start | user_id=%s", update.effective_user.id)
-        return
-
     logger.info("/start | user_id=%s", update.effective_user.id)
     await update.message.reply_text(
         "Jarvis online.\n\nSend me a message and I'll echo it back for now. "
@@ -35,11 +27,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+@require_auth
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        logger.warning("Unauthorized /help | user_id=%s", update.effective_user.id)
-        return
-
     logger.info("/help | user_id=%s", update.effective_user.id)
     await update.message.reply_text(
         "Commands:\n"
@@ -49,20 +38,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+@require_auth
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
-
-    if not is_authorized(update):
-        logger.warning("Unauthorized access attempt | user_id=%s", user_id)
-        return
-
-    text = update.message.text
     logger.info("Message received | user_id=%s", user_id)
 
-    with get_session() as session:
-        session.add(Message(text=text, sender=str(user_id)))
+    reply = handle_message(text=update.message.text, sender=str(user_id))
 
-    await update.message.reply_text(f"You said: {text}")
+    await update.message.reply_text(reply)
 
 
 def main() -> None:
