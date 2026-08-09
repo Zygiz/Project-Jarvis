@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     database_url: str
     telegram_bot_token: str
     telegram_allowed_user_ids: str = ""
+    gemini_api_key: str = ""
+    llm_provider: str = "gemini"
+    llm_model: str = "gemini-2.5-flash"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

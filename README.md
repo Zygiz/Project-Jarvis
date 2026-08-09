@@ -114,7 +114,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Clean bot → service → response boundaries
 
 ### Week 4 — LLM + first real tool
-- [ ] LLM provider abstraction (Anthropic impl)
+- [x] LLM provider abstraction (Gemini impl)
 - [ ] First round-trip: message → LLM → reply
 - [ ] Prompt + bounded history window
 - [ ] Structured JSON intent, validated with pydantic
