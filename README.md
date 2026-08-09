@@ -111,7 +111,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Allowlist my own Telegram user ID (auth)
 - [x] Command handling (`/start`, `/help`)
 - [x] Persist incoming messages to Postgres
-- [ ] Clean bot → service → response boundaries
+- [x] Clean bot → service → response boundaries
 
 ### Week 4 — LLM + first real tool
 - [ ] LLM provider abstraction (Anthropic impl)
