@@ -9,6 +9,15 @@ class LLMProvider(ABC):
     """
 
     @abstractmethod
-    def complete(self, prompt: str, system: str | None = None) -> str:
-        """Send a prompt, return the model's text reply."""
+    def complete(
+        self,
+        prompt: str,
+        system: str | None = None,
+        history: list[dict] | None = None,
+    ) -> str:
+        """Send a prompt with optional conversation history, return the reply.
+
+        history is a list of {"role": "user"|"assistant", "text": str},
+        oldest first. Providers translate these role names internally.
+        """
         ...
