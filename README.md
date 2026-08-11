@@ -117,7 +117,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] LLM provider abstraction (Gemini impl)
 - [x] First round-trip: message → LLM → reply
 - [x] Prompt + bounded history window
-- [ ] Structured JSON intent, validated with pydantic
+- [x] Structured JSON intent, validated with pydantic
 - [ ] `create_reminder` tool: validate → store
 - [ ] APScheduler fires due reminders over Telegram
 - [ ] Usage/cost + error logging

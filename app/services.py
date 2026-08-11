@@ -6,6 +6,9 @@ from app.database import get_session
 from app.llm import get_llm
 from app.models import Message
 
+from app.intent_parser import parse_intent
+from app.intents import CreateReminderIntent
+
 logger = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 10
@@ -45,15 +48,20 @@ def get_recent_history(sender: str, limit: int = HISTORY_LIMIT) -> list[dict]:
 def handle_message(text: str, sender: str) -> str:
     """Process an incoming message and return Jarvis's reply."""
     history = get_recent_history(sender)
-
     save_message(text=text, sender=sender, role="user")
 
-    try:
-        reply = get_llm().complete(
-            prompt=text,
-            system=SYSTEM_PROMPT,
-            history=history,
+    intent = parse_intent(text)
+
+    if isinstance(intent, CreateReminderIntent):
+        reply = (
+            f"Got it — reminder for '{intent.task}' at '{intent.when}'. "
+            "(Not actually saved yet — storage comes next.)"
         )
+        save_message(text=reply, sender=sender, role="assistant")
+        return reply
+
+    try:
+        reply = get_llm().complete(prompt=text, system=SYSTEM_PROMPT, history=history)
     except Exception:
         logger.exception("LLM call failed | sender=%s", sender)
         return "Sorry, I couldn't reach my brain just then. Try again?"
