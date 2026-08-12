@@ -17,17 +17,19 @@ Respond with ONLY a JSON object. No markdown, no code fences, no explanation.
 Available actions:
 
 1. Creating a reminder:
-{"action": "create_reminder", "task": "<what to be reminded of>", "when": "<the time expression exactly as the user phrased it>"}
+{"action": "create_reminder", "task": "<what to be reminded of>", "when": "<the time>"}
 
-2. Anything else — questions, conversation, requests you have no action for:
+2. Anything else - questions, conversation, requests you have no action for:
 {"action": "chat"}
 
 Rules:
-- Only use "create_reminder" if the user clearly wants to be reminded of something at a time.
-- Copy the time expression verbatim; do not convert it to a date.
+- Only use "create_reminder" if the user clearly wants a reminder at a time.
+- For "when", use simple formats a date parser handles:
+  "tomorrow at 09:00", "Friday 14:00", "in 2 hours", "25 December 10:00"
+- Do NOT use the word "next". Write "Friday 14:00", not "next Friday at 14:00".
+- If no time of day is given, just give the day: "Friday", "tomorrow".
 - If unsure, use {"action": "chat"}."""
 
-# Maps the action string to the model that validates it.
 _INTENT_MODELS = {
     "chat": ChatIntent,
     "create_reminder": CreateReminderIntent,
@@ -35,7 +37,7 @@ _INTENT_MODELS = {
 
 
 def _strip_fences(text: str) -> str:
-    """Models often wrap JSON in ```json ... ``` despite being told not to."""
+    """Models often wrap JSON in code fences despite being told not to."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
         lines = [ln for ln in cleaned.splitlines() if not ln.strip().startswith("```")]
@@ -46,7 +48,7 @@ def _strip_fences(text: str) -> str:
 def parse_intent(text: str) -> Intent:
     """Ask the LLM to classify the message, then validate the result.
 
-    Falls back to ChatIntent on any failure — an unparseable or unknown
+    Falls back to ChatIntent on any failure. An unparseable or unknown
     intent must never become an action.
     """
     try:
@@ -62,7 +64,7 @@ def parse_intent(text: str) -> Intent:
         return ChatIntent(action="chat")
 
     if not isinstance(data, dict):
-        logger.warning("Intent JSON was not an object | got=%s", type(data).__name__)
+        logger.warning("Intent JSON was not an object")
         return ChatIntent(action="chat")
 
     model = _INTENT_MODELS.get(data.get("action"))
@@ -73,7 +75,7 @@ def parse_intent(text: str) -> Intent:
     try:
         intent = model.model_validate(data)
     except ValidationError as exc:
-        logger.warning("Intent failed validation | action=%s | %s", data.get("action"), exc)
+        logger.warning("Intent failed validation | %s", exc)
         return ChatIntent(action="chat")
 
     logger.info("Intent parsed | action=%s", intent.action)

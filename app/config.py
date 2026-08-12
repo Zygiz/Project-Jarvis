@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     llm_provider: str = "gemini"
     llm_model: str = "gemini-2.5-flash"
+    timezone: str = "Europe/Vilnius"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

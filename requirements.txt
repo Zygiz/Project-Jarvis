@@ -10,3 +10,5 @@ pytest
 httpx
 python-telegram-bot
 google-genai
+dateparser
+apscheduler

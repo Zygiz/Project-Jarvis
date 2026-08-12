@@ -9,6 +9,14 @@ from app.models import Message
 from app.intent_parser import parse_intent
 from app.intents import CreateReminderIntent
 
+from app.models import Message, Reminder
+from app.timeparse import parse_when
+
+from datetime import timezone as dt_timezone
+from zoneinfo import ZoneInfo
+
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 10
@@ -53,9 +61,8 @@ def handle_message(text: str, sender: str) -> str:
     intent = parse_intent(text)
 
     if isinstance(intent, CreateReminderIntent):
-        reply = (
-            f"Got it — reminder for '{intent.task}' at '{intent.when}'. "
-            "(Not actually saved yet — storage comes next.)"
+        reply = create_reminder(
+            task=intent.task, when=intent.when, recipient=sender
         )
         save_message(text=reply, sender=sender, role="assistant")
         return reply
@@ -69,3 +76,23 @@ def handle_message(text: str, sender: str) -> str:
     save_message(text=reply, sender=sender, role="assistant")
     logger.info("LLM reply generated | sender=%s | history=%s", sender, len(history))
     return reply
+
+
+def create_reminder(task: str, when: str, recipient: str) -> str:
+    """Validate the time phrase and store a reminder. Returns a user-facing reply."""
+    due_at = parse_when(when)
+
+    if due_at is None:
+        return (
+            f"I understood the task ('{task}') but not the timing ('{when}'). "
+            "Try something like 'tomorrow at 09:00' or 'Friday 14:00'."
+        )
+
+    with get_session() as session:
+        session.add(Reminder(task=task, recipient=recipient, due_at=due_at))
+
+    local = due_at.replace(tzinfo=dt_timezone.utc).astimezone(
+        ZoneInfo(settings.timezone)
+    )
+    logger.info("Reminder created | recipient=%s | due_at=%s", recipient, due_at)
+    return f"Reminder set: {task} — {local.strftime('%a %d %b at %H:%M')}"
