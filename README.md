@@ -118,8 +118,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] First round-trip: message → LLM → reply
 - [x] Prompt + bounded history window
 - [x] Structured JSON intent, validated with pydantic
-- [ ] `create_reminder` tool: validate → store
-- [ ] APScheduler fires due reminders over Telegram
+- [x] `create_reminder` tool: validate → store
+- [x] APScheduler fires due reminders over Telegram
 - [ ] Usage/cost + error logging
 - [ ] 🎉 **Jarvis v0.1 works** — snapshot + tag a release
 
