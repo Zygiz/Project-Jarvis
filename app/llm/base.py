@@ -14,6 +14,7 @@ class LLMProvider(ABC):
         prompt: str,
         system: str | None = None,
         history: list[dict] | None = None,
+        label: str = "chat",
     ) -> str:
         """Send a prompt with optional conversation history, return the reply.
 

@@ -22,6 +22,7 @@ class GeminiProvider(LLMProvider):
         prompt: str,
         system: str | None = None,
         history: list[dict] | None = None,
+        label: str = "chat",
     ) -> str:
         contents = []
 
@@ -31,9 +32,7 @@ class GeminiProvider(LLMProvider):
                 types.Content(role=role, parts=[types.Part(text=turn["text"])])
             )
 
-        contents.append(
-            types.Content(role="user", parts=[types.Part(text=prompt)])
-        )
+        contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
 
         config = (
             types.GenerateContentConfig(system_instruction=system) if system else None
@@ -45,7 +44,25 @@ class GeminiProvider(LLMProvider):
             config=config,
         )
 
-        logger.info(
-            "LLM call complete | model=%s | turns=%s", self._model, len(contents)
-        )
+        # Usage metadata field names change between SDK versions, so read them
+        # defensively — a logging line must never break a working API call.
+        usage = getattr(response, "usage_metadata", None)
+        if usage is not None:
+            logger.info(
+                "LLM call | label=%s | model=%s | turns=%s | in=%s | out=%s | total=%s",
+                label,
+                self._model,
+                len(contents),
+                getattr(usage, "prompt_token_count", None),
+                getattr(usage, "candidates_token_count", None),
+                getattr(usage, "total_token_count", None),
+            )
+        else:
+            logger.info(
+                "LLM call | label=%s | model=%s | turns=%s | usage=unavailable",
+                label,
+                self._model,
+                len(contents),
+            )
+
         return response.text

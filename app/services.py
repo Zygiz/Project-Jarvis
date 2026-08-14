@@ -68,7 +68,7 @@ def handle_message(text: str, sender: str) -> str:
         return reply
 
     try:
-        reply = get_llm().complete(prompt=text, system=SYSTEM_PROMPT, history=history)
+        reply = get_llm().complete(prompt=text, system=SYSTEM_PROMPT, history=history, label="chat")
     except Exception:
         logger.exception("LLM call failed | sender=%s", sender)
         return "Sorry, I couldn't reach my brain just then. Try again?"

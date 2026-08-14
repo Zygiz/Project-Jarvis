@@ -52,7 +52,7 @@ def parse_intent(text: str) -> Intent:
     intent must never become an action.
     """
     try:
-        raw = get_llm().complete(prompt=text, system=INTENT_PROMPT)
+        raw = get_llm().complete(prompt=text, system=INTENT_PROMPT, label="intent")
     except Exception:
         logger.exception("Intent classification call failed")
         return ChatIntent(action="chat")
