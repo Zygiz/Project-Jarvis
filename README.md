@@ -120,8 +120,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - [x] Structured JSON intent, validated with pydantic
 - [x] `create_reminder` tool: validate → store
 - [x] APScheduler fires due reminders over Telegram
-- [ ] Usage/cost + error logging
-- [ ] 🎉 **Jarvis v0.1 works** — snapshot + tag a release
+- [x] Usage/cost + error logging
+- [x] 🎉 **Jarvis v0.1 works** — snapshot + tag a release
 
 ---
 

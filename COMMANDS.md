@@ -9,7 +9,7 @@ Key values:
 - Ports: API `8000` (loopback only), Postgres `5432` (internal only), SSH-to-VM `2222`
 - Services: `api`, `bot`, `db`
 - My Telegram user ID: `8524921379`
-- LLM: Gemini free tier, model `gemini-3.5-flash`
+- LLM: Gemini free tier, model `gemini-3.5-flash-lite`
 - Timezone: `Europe/Vilnius` (UTC+3 summer) — stored as UTC, displayed local
 
 ---
@@ -23,9 +23,9 @@ Telegram
   → handle_message (services.py)
         ├─ get_recent_history()   last 10 messages for this sender
         ├─ save_message(role="user")
-        ├─ parse_intent()         → LLM call #1, returns VALIDATED Intent
+        ├─ parse_intent()         → LLM call #1 (label=intent), VALIDATED Intent
         │     ├─ CreateReminderIntent → create_reminder() → parse_when() → DB
-        │     └─ ChatIntent           → LLM call #2 with history
+        │     └─ ChatIntent           → LLM call #2 (label=chat) with history
         └─ save_message(role="assistant")
   → reply returned to bot.py → sent back to Telegram
 
@@ -38,9 +38,38 @@ Separately, every 60s:
 `services.py` knows nothing about Telegram — it takes strings and returns a string.
 That boundary lets a web UI or voice interface reuse the same logic later.
 
-**Note:** two LLM calls per message (classify + reply). On the free tier that halves
-the effective daily budget. Fix later by combining them or classifying with a
-cheaper model.
+---
+
+## Usage & cost tracking
+
+Two LLM calls per message (classify + reply), so the effective free-tier budget is
+half the request cap. Token counts are logged in `gemini.py` on every call.
+
+```bash
+# Every LLM call with token counts (note the trailing pipe — excludes error lines)
+docker compose logs bot | grep "LLM call |"
+
+# How many calls today
+docker compose logs bot | grep -c "LLM call |"
+
+# Split by type
+docker compose logs bot | grep -c "label=intent"
+docker compose logs bot | grep -c "label=chat"
+
+# Failures
+docker compose logs bot | grep "LLM call failed"
+```
+
+`label=intent` calls are small (no history). `label=chat` calls are larger because
+they carry the history window — that's where token spend grows.
+
+Usage metadata field names change between SDK versions, so they're read with
+`getattr(..., None)`. **A logging line must never break a working API call.**
+
+Real quota usage: https://aistudio.google.com
+
+Not stored in a table yet — log lines are enough to grep. Add a `usage` table only
+if real aggregation is actually needed.
 
 ---
 
@@ -107,7 +136,8 @@ docker compose logs -f bot | grep -i "reminder\|scheduler"
 
 **Delivery is up to 60s late by design.** The scheduler ticks on a fixed interval
 independent of when reminders are created, so a reminder due at 10:11:31 gets sent
-by the 10:11:47 tick. That's expected, not a bug.
+by the 10:11:47 tick. That's expected, not a bug. (I thought this was broken once —
+it wasn't; check the timestamps before assuming.)
 
 ### Timezone rules
 
@@ -162,6 +192,93 @@ application = Application.builder().token(...).post_init(_start_scheduler).build
 
 General rule: anything asyncio-based must be created INSIDE a running event loop,
 not before it. Same shape of fix for async DB connections or HTTP clients.
+
+---
+
+## LLM provider
+
+Config in `.env`: `LLM_PROVIDER`, `LLM_MODEL`, `GEMINI_API_KEY`.
+Code in `app/llm/`:
+- `base.py` — the abstract contract (`complete(prompt, system, history, label)`)
+- `gemini.py` — Gemini impl; the ONLY file importing `google.genai`
+- `__init__.py` — `get_llm()` factory, maps the config string to a class
+
+Adding another provider (Anthropic, Ollama) = one new file + three lines in the
+factory. Nothing else changes.
+
+**Role names:** the interface uses `"user"` / `"assistant"`. Gemini calls the AI's
+turn `"model"`, so `gemini.py` has `_ROLE_MAP` to translate. Provider quirks stay
+inside the provider.
+
+```bash
+docker compose exec api python -c "from app.llm import get_llm; print(get_llm().complete('hi'))"
+
+# List models my key can see
+docker compose exec api python -c "from google import genai; from app.config import settings; c = genai.Client(api_key=settings.gemini_api_key); [print(m.name) for m in c.models.list()]"
+```
+
+### Diagnosing "is it my code or theirs?"
+
+Run the direct call above. It touches almost nothing, so:
+- **It fails too** → not my code. Server side or config.
+- **It works** → something in the chat/intent path specifically is broken.
+
+Status codes tell you which:
+- **5xx** (503 UNAVAILABLE "experiencing high demand") → their servers. Not my bug.
+  Switch models or wait.
+- **4xx** (404 NOT_FOUND, 429 RESOURCE_EXHAUSTED) → my request or my quota.
+- `TypeError` / `NameError` → my code.
+
+Happened once: `gemini-3.5-flash` returned 503 for every call while
+`gemini-3.5-flash-lite` worked fine. **Model availability varies per model** —
+switching is a one-line `.env` change. That's what the abstraction is for.
+
+Fallback models my key can use: `gemini-3.5-flash-lite`, `gemini-3.6-flash`,
+`gemini-3.1-flash-lite`, `gemini-2.0-flash`.
+
+**Gotcha:** assign the client to a variable (`c = genai.Client(...)`) before
+iterating `models.list()`. Inline, Python garbage-collects it mid-pagination:
+`RuntimeError: Cannot send a request, as the client has been closed`.
+
+**Gotcha:** `models.list()` shows models the key can SEE, not ones it can CALL.
+`gemini-2.5-flash` was listed but returned 404 "no longer available to new users".
+Trust the actual call, not the list.
+
+**Gotcha:** after changing `.env`, use `docker compose up -d` — plain `restart` can
+keep the old environment values.
+
+Avoid `-latest` aliases — the model changes under you without warning. Pin a version.
+Use Flash tier; Pro free quotas are too small to build on.
+
+Harmless stderr noise: `Direct use of automatic function calling (AFC) in
+Models.generate_content is not recommended` — the SDK nudging toward its `Chat` API
+for multi-turn. Worth exploring later; not an error.
+
+Free-tier privacy note: Google may use free-tier prompts/responses to improve their
+models. Fine for testing; revisit before Jarvis touches email or personal memory.
+Options then: paid tier, Vertex AI, or local models via Ollama (Phase 13).
+
+---
+
+## Conversation history
+
+`get_recent_history(sender)` returns the last `HISTORY_LIMIT` (10) messages for that
+sender, oldest first. Both sides are stored — `role` is `"user"` or `"assistant"`.
+
+Bounded because unbounded history blows past context limits, costs more on every
+call, and adds noise. Semantic memory (Phase 10) is the proper answer for old
+context; this is just the recent window.
+
+10 messages ≈ 5 exchanges, since both sides count. Raising `HISTORY_LIMIT` costs
+tokens on every call — visible in the `label=chat` token counts.
+
+History is fetched BEFORE saving the new message, or the current message appears
+twice. The assistant reply is only saved if the LLM call succeeded, so failures
+don't fill history with error text.
+
+**Gotcha:** after the migration that added `role`, all existing rows were backfilled
+to `"user"`. The window then looked like ten unanswered questions and the model tried
+to address them all. Cleared the table and it was fine.
 
 ---
 
@@ -221,69 +338,8 @@ credentials. Logs also contain my own Telegram user ID.
 
 Truncate logged LLM output (`raw[:200]`) so a runaway response can't flood the logs.
 
----
-
-## LLM provider
-
-Config in `.env`: `LLM_PROVIDER`, `LLM_MODEL`, `GEMINI_API_KEY`.
-Code in `app/llm/`:
-- `base.py` — the abstract contract (`complete(prompt, system, history)`)
-- `gemini.py` — Gemini impl; the ONLY file importing `google.genai`
-- `__init__.py` — `get_llm()` factory, maps the config string to a class
-
-Adding another provider (Anthropic, Ollama) = one new file + three lines in the
-factory. Nothing else changes.
-
-**Role names:** the interface uses `"user"` / `"assistant"`. Gemini calls the AI's
-turn `"model"`, so `gemini.py` has `_ROLE_MAP` to translate. Provider quirks stay
-inside the provider.
-
-```bash
-docker compose exec api python -c "from app.llm import get_llm; print(get_llm().complete('hi'))"
-
-# List models my key can see
-docker compose exec api python -c "from google import genai; from app.config import settings; c = genai.Client(api_key=settings.gemini_api_key); [print(m.name) for m in c.models.list()]"
-```
-
-**Gotcha:** assign the client to a variable (`c = genai.Client(...)`) before
-iterating `models.list()`. Inline, Python garbage-collects it mid-pagination:
-`RuntimeError: Cannot send a request, as the client has been closed`.
-
-**Gotcha:** `models.list()` shows models the key can SEE, not ones it can CALL.
-`gemini-2.5-flash` was listed but returned 404 "no longer available to new users".
-Trust the actual call, not the list.
-
-**Gotcha:** after changing `.env`, use `docker compose up -d` — plain `restart` can
-keep the old environment values.
-
-Avoid `-latest` aliases — the model changes under you without warning. Pin a version.
-Use Flash tier; Pro free quotas are too small to build on.
-
-Free-tier privacy note: Google may use free-tier prompts/responses to improve their
-models. Fine for testing; revisit before Jarvis touches email or personal memory.
-Options then: paid tier, Vertex AI, or local models via Ollama (Phase 13).
-
----
-
-## Conversation history
-
-`get_recent_history(sender)` returns the last `HISTORY_LIMIT` (10) messages for that
-sender, oldest first. Both sides are stored — `role` is `"user"` or `"assistant"`.
-
-Bounded because unbounded history blows past context limits, costs more on every
-call, and adds noise. Semantic memory (Phase 10) is the proper answer for old
-context; this is just the recent window.
-
-10 messages ≈ 5 exchanges, since both sides count. Raising `HISTORY_LIMIT` costs
-tokens on every call.
-
-History is fetched BEFORE saving the new message, or the current message appears
-twice. The assistant reply is only saved if the LLM call succeeded, so failures
-don't fill history with error text.
-
-**Gotcha:** after the migration that added `role`, all 11 existing rows were
-backfilled to `"user"`. The window then looked like ten unanswered questions and
-the model tried to address them all. Cleared the table and it was fine.
+Check `.env.example` before committing — every secret value must be blank. Non-secret
+defaults like `LLM_MODEL` and `TIMEZONE` are fine and useful as documentation.
 
 ---
 
@@ -391,7 +447,7 @@ git push                   # send to GitHub
 git pull                   # get changes (do this when switching machines)
 git log --oneline          # compact history
 git diff                   # what changed since last commit
-git tag v0.1 && git push --tags     # mark a milestone release
+git tag -a v0.1 -m "..." && git push --tags    # mark a milestone release
 ```
 
 Switching between VM and VPS: **push before you stop, pull before you start.**
@@ -402,6 +458,9 @@ password, bot token, Gemini API key, and my user ID.
 Commit messages: verb first, present tense, describe WHAT changed.
 Good: `Add reminder tool with APScheduler delivery`
 Bad: `update`, `fix bug`, `changes`
+
+Prefer several small commits over one big one — separate a feature from its docs so
+history reads cleanly and one change can be reverted without the other.
 
 ---
 
@@ -438,6 +497,14 @@ ONE traceback, fix, restart.
 docker compose exec api python -c "import app.services; print('ok')"
 docker compose exec api python -c "import app.bot; print('ok')"
 ```
+
+**Verify an edit actually landed** before rebuilding:
+
+```bash
+grep -n "label" app/llm/gemini.py app/llm/base.py app/services.py app/intent_parser.py
+```
+
+Multi-file changes are easy to half-finish — this catches it in one command.
 
 **DANGER — wipes the database:**
 
@@ -531,6 +598,7 @@ Debug order:
 1. `docker compose ps` — is it even running?
 2. `docker compose logs <service>` — what did it say before dying?
 3. `grep` the file — did my change actually save?
+4. Test the failing piece in isolation — is it my code or theirs?
 
 Read tracebacks **bottom-up** — the real error is the last line. Check the LINE
 NUMBER too: an error on line 1 usually means the imports are missing.
@@ -544,6 +612,8 @@ Error types worth telling apart:
 - `NameError: name 'X' is not defined` → missing import, or a partial paste wiped
   the imports
 - `404 NOT_FOUND` from an LLM call → wrong/retired model in `LLM_MODEL`
+- `503 UNAVAILABLE` from an LLM call → THEIR servers. Switch model or wait.
+- `429 RESOURCE_EXHAUSTED` → my quota, not my code
 - `DetachedInstanceError` → read ORM attributes outside the session
 - `NotNullViolation` on migrate → missing `server_default`
 - `RuntimeError: no running event loop` → started an asyncio object outside the loop
